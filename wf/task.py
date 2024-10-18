@@ -78,6 +78,8 @@ def ligandmpnn_task(
         str(temperature),
     ]
 
+    # Tahir: ToDo - Make this nicer
+
     if checkpoint_ligand_mpnn:
         command.extend(["--checkpoint_ligand_mpnn", checkpoint_ligand_mpnn])
     if ligand_mpnn_use_atom_context == 0:
