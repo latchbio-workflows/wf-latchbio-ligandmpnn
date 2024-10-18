@@ -1,19 +1,18 @@
 import subprocess
 import sys
-import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from latch.executions import rename_current_execution
 from latch.functions.messages import message
-from latch.resources.tasks import large_gpu_task
+from latch.resources.tasks import large_gpu_task, small_gpu_task
 from latch.types.directory import LatchOutputDir
 from latch.types.file import LatchFile
 
 sys.stdout.reconfigure(line_buffering=True)
 
 
-@large_gpu_task(cache=True)
+@small_gpu_task(cache=True)
 def ligandmpnn_task(
     run_name: str,
     input_pdb: LatchFile,
@@ -56,9 +55,9 @@ def ligandmpnn_task(
     subprocess.run(["nvidia-smi"], check=True)
     subprocess.run(["nvcc", "--version"], check=True)
 
-    ligandmpnn_dir = Path("/tmp/docker-build/work/LigandMPNN")
     print("-" * 60)
     print("Running LigandMPNN")
+    ligandmpnn_dir = Path("/tmp/docker-build/work/LigandMPNN")
 
     command = [
         "python",
@@ -82,11 +81,18 @@ def ligandmpnn_task(
     if checkpoint_ligand_mpnn:
         command.extend(["--checkpoint_ligand_mpnn", checkpoint_ligand_mpnn])
     if ligand_mpnn_use_atom_context == 0:
-        command.append("--ligand_mpnn_use_atom_context")
+        command.extend(
+            ["--ligand_mpnn_use_atom_context", str(ligand_mpnn_use_atom_context)]
+        )
     if ligand_mpnn_use_side_chain_context == 1:
-        command.append("--ligand_mpnn_use_side_chain_context")
+        command.extend(
+            [
+                "--ligand_mpnn_use_side_chain_context",
+                str(ligand_mpnn_use_side_chain_context),
+            ]
+        )
     if pack_side_chains == 1:
-        command.append("--pack_side_chains")
+        command.extend(["--pack_side_chains", str(pack_side_chains)])
     if number_of_packs_per_design > 0:
         command.extend(
             ["--number_of_packs_per_design", str(number_of_packs_per_design)]
@@ -112,7 +118,7 @@ def ligandmpnn_task(
     if symmetry_weights:
         command.extend(["--symmetry_weights", symmetry_weights])
     if homo_oligomer == 1:
-        command.append("--homo_oligomer")
+        command.extend(["--homo_oligomer", str(homo_oligomer)])
     if bias_AA_per_residue_jsonl:
         command.extend(
             ["--bias_AA_per_residue_jsonl", str(bias_AA_per_residue_jsonl.local_path)]
@@ -122,9 +128,11 @@ def ligandmpnn_task(
             ["--omit_AA_per_residue_jsonl", str(omit_AA_per_residue_jsonl.local_path)]
         )
     if parse_atoms_with_zero_occupancy == 1:
-        command.append("--parse_atoms_with_zero_occupancy")
+        command.extend(
+            ["--parse_atoms_with_zero_occupancy", str(parse_atoms_with_zero_occupancy)]
+        )
     if save_stats == 1:
-        command.append("--save_stats")
+        command.extend(["--save_stats", str(save_stats)])
     if parse_these_chains_only:
         command.extend(["--parse_these_chains_only", parse_these_chains_only])
 
@@ -136,7 +144,8 @@ def ligandmpnn_task(
     except Exception as e:
         print("FAILED")
         message("error", {"title": "LigandMPNN failed", "body": f"{e}"})
-        time.sleep(60)
+        sys.exit(1)
 
+    print("-" * 60)
     print("Returning results")
     return LatchOutputDir(str("/root/outputs"), output_directory.remote_path)

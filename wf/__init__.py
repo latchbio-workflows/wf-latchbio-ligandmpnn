@@ -1,5 +1,6 @@
 from typing import Optional
 
+from latch.resources.launch_plan import LaunchPlan
 from latch.resources.workflow import workflow
 from latch.types.directory import LatchOutputDir
 from latch.types.file import LatchFile
@@ -7,22 +8,42 @@ from latch.types.metadata import (
     LatchAuthor,
     LatchMetadata,
     LatchParameter,
-    LatchRule,
     Params,
     Section,
     Spoiler,
+    Text,
 )
 
 from wf.task import ligandmpnn_task
 
 flow = [
     Section(
-        "Input and Output",
+        "Input",
         Params(
             "input_pdb",
-            "run_name",
-            "output_directory",
         ),
+        Text("The input PDB file can contain:"),
+        Text(
+            "- Protein backbone coordinates: The file should include the 3D coordinates for the main chain atoms (N, Cα, C, O) of each residue in the protein structure."
+        ),
+        Text(
+            "- Ligands or non-protein atoms (if applicable): If your protein interacts with ligands, metals, or other non-protein molecules, include their 3D coordinates in the PDB file. These will be considered during sequence design and side chain packing."
+        ),
+        Text(
+            "- Side chain coordinates (optional): While not required, including existing side chain coordinates can provide additional context for the design process."
+        ),
+        Text(
+            "The PDB file should follow standard PDB format. Ensure that all non-standard residues or ligands are properly defined in the HETATM records. If using modified amino acids, make sure they are correctly specified in the MODRES records."
+        ),
+        Text(
+            "Note: The input PDB represents the backbone scaffold for design. LigandMPNN will generate a new sequence to fit this backbone while considering any included ligands or non-protein atoms."
+        ),
+    ),
+    Section(
+        "Output",
+        Params("run_name"),
+        Text("Directory for outputs"),
+        Params("output_directory"),
     ),
     Section(
         "Model Configuration",
@@ -42,7 +63,7 @@ flow = [
             ),
         ),
     ),
-    Spoiler(
+    Section(
         "Side Chain Packing",
         Params(
             "pack_side_chains",
@@ -90,8 +111,11 @@ flow = [
 metadata = LatchMetadata(
     display_name="LigandMPNN",
     author=LatchAuthor(
-        name="LatchBio",
+        name="Justas Dauparas et al.",
     ),
+    repository="https://github.com/latchbio-workflows/wf-latchbio-ligandmpnn",
+    license="MIT",
+    tags=["Protein Engineering"],
     parameters={
         "run_name": LatchParameter(
             display_name="Run Name",
@@ -249,6 +273,108 @@ def ligandmpnn_workflow(
     omit_AA_per_residue_jsonl: Optional[LatchFile] = None,
     parse_atoms_with_zero_occupancy: int = 0,
 ) -> LatchOutputDir:
+    """
+    LigandMPNN: Deep learning-based protein sequence design method that allows explicit modeling of small molecule, nucleotide, metal, and other atomic contexts.
+
+    <p align="center">
+        <img src="https://cbirt.net/wp-content/uploads/2024/01/LigandMPNN.webp" width="800px"/>
+    </p>
+
+    <html>
+    <p align="center">
+    <img src="https://user-images.githubusercontent.com/31255434/182289305-4cc620e3-86ae-480f-9b61-6ca83283caa5.jpg" alt="Latch Verified" width="100">
+    </p>
+
+    <p align="center">
+    <strong>
+    Latch Verified
+    </strong>
+    </p>
+
+    # LigandMPNN
+
+    LigandMPNN is a deep learning-based protein sequence design method that explicitly models all non-protein components of biomolecular systems. It allows for the design of proteins in the context of small molecules, nucleotides, metals, and other atomic contexts, which is critical for enzyme design and the creation of small molecule binders and sensors.
+
+    ### Key Features
+
+    - Explicitly models non-protein atoms and molecules
+    - Outperforms Rosetta and ProteinMPNN in native backbone sequence recovery for residues interacting with:
+        - Small molecules (63.3% vs. 50.4% & 50.5%)
+        - Nucleotides (50.5% vs. 35.2% & 34.0%)
+        - Metals (77.5% vs. 36.0% & 40.6%)
+    - Generates both sequences and sidechain conformations
+    - Enables detailed evaluation of binding interactions
+    - Supports design of symmetric and multi-state proteins
+    - High-speed and lightweight (0.9 seconds on a single CPU for 100 residues)
+
+    ### Model Architecture and Functioning
+
+    LigandMPNN builds upon the ProteinMPNN architecture, generalizing it to incorporate non-protein atoms. The model operates on three different graphs:
+
+    - Protein-only graph:
+        - Nodes: Protein residues
+        - Edges: Based on Cα-Cα distances (25 nearest neighbors)
+        - Edge features: Pairwise distances between N, Cα, C, O, and virtual Cβ atoms
+
+    - Intra-ligand graph:
+        - Nodes: Ligand atoms (25 closest to each protein residue)
+        - Node features: One-hot encoded chemical element types
+        - Edges: Fully connected
+        - Edge features: Distances between atoms
+
+    - Protein-ligand graph:
+        - Nodes: Protein residues and ligand atoms
+        - Edges: Between each protein residue and its 25 closest ligand atoms
+        - Edge features: Distances between protein atoms (N, Cα, C, O, virtual Cβ) and ligand atoms
+
+
+    The model consists of three main components:
+
+    - Protein backbone encoder:
+        - Three encoder layers with 128 hidden dimensions
+        - Processes protein-only graph to obtain intermediate node/edge representations
+
+    - Protein-ligand encoder:
+        - Two message-passing blocks
+        - Updates ligand graph representations
+        - Updates protein-ligand graph representations
+        - Combines output with protein encoder node representations
+
+    - Decoder:
+        - Uses random autoregressive decoding scheme
+        - Generates amino acid sequences
+        - Predicts sidechain conformations (torsion angles)
+
+
+    Sidechain packing:
+    - Predicts four side-chain torsion angles (chi1, chi2, chi3, chi4) for each residue
+    - Uses a mixture of three circular normal distributions per chi angle
+    - Autoregressively decodes chi angles in order (chi1, chi2, chi3, chi4)
+
+    Training:
+    - Augmented dataset by using 2-4% of protein residue side-chain atoms as context ligand atoms
+    - Enables direct input of side-chain atom coordinates to stabilize functional sites
+
+    The LigandMPNN neural network has 2.62 million parameters, compared to ProteinMPNN's 1.66 million parameters. Despite the increased complexity, it maintains high speed and lightweight operation, scaling linearly with respect to protein length.
+
+    ### Applications
+
+    - Enzyme design
+    - Protein-DNA/RNA binder design
+    - Protein-small molecule binder design
+    - Protein-metal binder design
+
+    ### Performance
+
+    Experimental characterization demonstrates that LigandMPNN can generate small molecule and DNA-binding proteins with high affinity and specificity.
+
+    ### Credits
+
+    Atomic context-conditioned protein sequence design using LigandMPNN
+    Justas Dauparas, Gyu Rie Lee, Robert Pecoraro, Linna An, Ivan Anishchenko, Cameron Glasscock, D. Baker
+    bioRxiv 2023.12.22.573103; doi: https://doi.org/10.1101/2023.12.22.573103
+
+    """
     return ligandmpnn_task(
         run_name=run_name,
         input_pdb=input_pdb,
@@ -280,3 +406,17 @@ def ligandmpnn_workflow(
         omit_AA_per_residue_jsonl=omit_AA_per_residue_jsonl,
         parse_atoms_with_zero_occupancy=parse_atoms_with_zero_occupancy,
     )
+
+
+LaunchPlan(
+    ligandmpnn_workflow,
+    "New Sequence with Single Side Chain",
+    {
+        "run_name": "sequence_single_side_chain",
+        "input_pdb": LatchFile(
+            "s3://latch-public/proteinengineering/ligandmpnn/1BC8.pdb"
+        ),
+        "pack_side_chains": 1,
+        "pack_with_ligand_context": 1,
+    },
+)
