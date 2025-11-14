@@ -65,20 +65,24 @@ ENV DISKCACHE_SIZE="200Gi"
 
 # Latch SDK
 # DO NOT REMOVE
-RUN pip install latch==2.67.17
+RUN apt-get update && apt-get install -y libattr1-dev python3.9-dev && \
+    rm -rf /var/lib/apt/lists/*
+RUN python3.9 -m pip install latch==2.67.12
 RUN mkdir /opt/latch
 
-# Install Mambaforge
+# Install Mambaforge (now using Miniforge3 which includes mamba)
 RUN apt-get update --yes && \
-    apt-get install --yes curl && \
+    apt-get install --yes curl ca-certificates && \
     curl \
         --location \
         --fail \
+        --retry 3 \
+        --retry-delay 5 \
         --remote-name \
-        https://github.com/conda-forge/miniforge/releases/latest/download/Mambaforge-Linux-x86_64.sh && \
+        https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh && \
     `# Docs for -b and -p flags: https://docs.anaconda.com/anaconda/install/silent-mode/#linux-macos` \
-    bash Mambaforge-Linux-x86_64.sh -b -p /opt/conda -u && \
-    rm Mambaforge-Linux-x86_64.sh
+    bash Miniforge3-Linux-x86_64.sh -b -p /opt/conda -u && \
+    rm Miniforge3-Linux-x86_64.sh
 
 # Set conda PATH
 ENV PATH=/opt/conda/bin:$PATH
