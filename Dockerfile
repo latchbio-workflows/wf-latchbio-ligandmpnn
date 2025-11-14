@@ -65,7 +65,7 @@ ENV DISKCACHE_SIZE="200Gi"
 
 # Latch SDK
 # DO NOT REMOVE
-RUN pip install latch==2.53.0
+RUN pip install latch==2.67.17
 RUN mkdir /opt/latch
 
 # Install Mambaforge
